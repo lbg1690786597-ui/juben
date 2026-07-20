@@ -13,6 +13,14 @@
     "opener:allow-open-path",
     "updater:default",
     "process:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://118.196.33.51/*" },
+        { "url": "http://*" },
+        { "url": "https://*" }
+      ]
+    }
   ]
 }

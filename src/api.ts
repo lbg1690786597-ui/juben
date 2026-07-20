@@ -1,4 +1,6 @@
 // ===== 后端 API 封装（复用平台 orchestrator 接口）=====
+// 使用 Tauri HTTP 插件的 fetch（从 Rust 侧发请求，绕过 WebView 的明文 HTTP / mixed-content 限制）
+import { fetch } from "@tauri-apps/plugin-http";
 
 export interface UserInfo {
   id: number;
