@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   Download,
   Search,
@@ -15,7 +17,11 @@ import {
   SkipForward,
   Tag,
   RefreshCw,
+  ArrowUpCircle,
 } from "lucide-react";
+
+// 当前版本号（与 tauri.conf.json / Cargo.toml 保持一致）
+const APP_VERSION = "1.1.0";
 import {
   login,
   fetchDeliveryList,
@@ -231,6 +237,33 @@ function MainView({
     () => Number(localStorage.getItem(LS.concurrency)) || 4
   );
 
+  // 更新检查
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  async function checkForUpdate() {
+    setCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (update) {
+        const ok = window.confirm(
+          `发现新版本 v${update.version}${
+            update.body ? `\n\n更新内容:\n${update.body}` : ""
+          }\n\n是否立即下载并安装？安装完成后将重启应用。`
+        );
+        if (ok) {
+          await update.downloadAndInstall();
+          await relaunch();
+        }
+      } else {
+        alert(`当前已是最新版本 v${APP_VERSION}`);
+      }
+    } catch (e: any) {
+      alert("检查更新失败: " + (e?.toString() || e));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
   // 加载清单
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -375,6 +408,22 @@ function MainView({
           <div className="topbar-title">视频交付下载器</div>
         </div>
         <div className="topbar-right">
+          <span className="version-badge" title="当前版本">
+            v{APP_VERSION}
+          </span>
+          <button
+            className="btn btn-ghost"
+            onClick={checkForUpdate}
+            disabled={checkingUpdate}
+            title="检查更新"
+          >
+            {checkingUpdate ? (
+              <Loader2 size={15} className="spin" />
+            ) : (
+              <ArrowUpCircle size={15} />
+            )}
+            {checkingUpdate ? "检查中..." : "检查更新"}
+          </button>
           <div className="user-chip">
             <div className="user-avatar">
               {(user.display_name || user.username || "?")

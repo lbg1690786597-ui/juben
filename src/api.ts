@@ -28,7 +28,7 @@ export interface DeliveryListResult {
 }
 
 // 默认服务器地址（可在登录页修改并记忆）
-export const DEFAULT_BASE = "http://120.26.143.129";
+export const DEFAULT_BASE = "http://118.196.33.51";
 
 function trimBase(base: string): string {
   return base.replace(/\/+$/, "");

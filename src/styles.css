@@ -239,6 +239,15 @@ select {
   font-size: 13px;
   color: var(--ink-secondary);
 }
+.version-badge {
+  padding: 3px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
 .user-chip {
   display: flex;
   align-items: center;
