@@ -18,9 +18,13 @@ export interface LoginResult {
 export interface VideoItem {
   id: number;
   title: string;
+  original_title?: string | null; // 原小说名
   cdn_url: string;
   source: string;
   created_at: string | null;
+  updated_at?: string | null; // 实际生成完成时间
+  feishu_record_id?: string | null; // 飞书来源行
+  duration?: number; // 时长(秒)
   download_count: number;
 }
 

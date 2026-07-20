@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { check } from "@tauri-apps/plugin-updater";
@@ -20,8 +21,6 @@ import {
   ArrowUpCircle,
 } from "lucide-react";
 
-// 当前版本号（与 tauri.conf.json / Cargo.toml 保持一致）
-const APP_VERSION = "1.1.0";
 import {
   login,
   fetchDeliveryList,
@@ -240,6 +239,21 @@ function MainView({
   // 更新检查
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
+  // 当前应用版本（动态读取，始终与安装包一致）
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+  }, []);
+
+  // 主题（浅色/暗色，持久化）
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (localStorage.getItem("vd_theme") as "dark" | "light") || "dark"
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("vd_theme", theme);
+  }, [theme]);
+
   async function checkForUpdate() {
     setCheckingUpdate(true);
     try {
@@ -255,7 +269,7 @@ function MainView({
           await relaunch();
         }
       } else {
-        alert(`当前已是最新版本 v${APP_VERSION}`);
+        alert(`当前已是最新版本 v${appVersion}`);
       }
     } catch (e: any) {
       alert("检查更新失败: " + (e?.toString() || e));
@@ -409,8 +423,15 @@ function MainView({
         </div>
         <div className="topbar-right">
           <span className="version-badge" title="当前版本">
-            v{APP_VERSION}
+            v{appVersion || "?"}
           </span>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            title={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"}
+          >
+            {theme === "dark" ? "☀️ 浅色" : "🌙 暗色"}
+          </button>
           <button
             className="btn btn-ghost"
             onClick={checkForUpdate}
@@ -540,8 +561,11 @@ function MainView({
                     />
                   </th>
                   <th style={{ width: 60 }}>ID</th>
-                  <th>标题</th>
+                  <th>标题 / 原名</th>
                   <th style={{ width: 110 }}>来源</th>
+                  <th style={{ width: 130 }}>创建时间</th>
+                  <th style={{ width: 130 }}>完成时间</th>
+                  <th style={{ width: 70 }}>时长</th>
                   <th style={{ width: 170 }}>状态 / 进度</th>
                 </tr>
               </thead>
@@ -566,6 +590,20 @@ function MainView({
                         <div className="col-title" title={v.title}>
                           {v.title}
                         </div>
+                        {v.original_title &&
+                          v.original_title !== v.title && (
+                            <div
+                              className="col-subtitle"
+                              title={`原小说名: ${v.original_title}`}
+                              style={{
+                                fontSize: 12,
+                                color: "var(--ink-muted)",
+                                marginTop: 2,
+                              }}
+                            >
+                              原名: {v.original_title}
+                            </div>
+                          )}
                       </td>
                       <td>
                         <span
@@ -576,6 +614,15 @@ function MainView({
                           <Tag size={11} />
                           {v.source === "feishu" ? "飞书" : "小说转视频"}
                         </span>
+                      </td>
+                      <td style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                        {fmtBeijing(v.created_at)}
+                      </td>
+                      <td style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                        {fmtBeijing(v.updated_at)}
+                      </td>
+                      <td style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                        {fmtDuration(v.duration)}
                       </td>
                       <td>
                         <RowStatusCell state={rs} />
@@ -669,6 +716,26 @@ function MainView({
       </div>
     </div>
   );
+}
+
+// UTC ISO → 北京时间显示（yyyy-MM-dd HH:mm）
+function fmtBeijing(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  const bj = new Date(d.getTime() + 8 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(
+    bj.getUTCDate()
+  )} ${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}`;
+}
+
+// 秒 → mm:ss
+function fmtDuration(sec?: number): string {
+  if (!sec || sec <= 0) return "—";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function RowStatusCell({ state }: { state?: RowState }) {
