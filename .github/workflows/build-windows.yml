@@ -52,9 +52,8 @@ jobs:
       - name: 编译打包 Windows 安装包（含更新签名）
         run: pnpm tauri build
         env:
-          # 更新签名私钥 + 密码，存于 GitHub Secrets
+          # 更新签名私钥（本密钥无密码，故不传 PASSWORD 变量）
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 上传安装包产物
         uses: actions/upload-artifact@v4
