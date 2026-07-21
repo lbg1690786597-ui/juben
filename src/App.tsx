@@ -245,9 +245,9 @@ function MainView({
     getVersion().then(setAppVersion).catch(() => setAppVersion(""));
   }, []);
 
-  // 主题（浅色/暗色，持久化）
+  // 主题（浅色/暗色，持久化；默认浅色）
   const [theme, setTheme] = useState<"dark" | "light">(
-    () => (localStorage.getItem("vd_theme") as "dark" | "light") || "dark"
+    () => (localStorage.getItem("vd_theme") as "dark" | "light") || "light"
   );
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
