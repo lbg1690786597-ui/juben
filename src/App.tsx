@@ -222,6 +222,12 @@ function MainView({
   const [source, setSource] = useState("");
   const [startHour, setStartHour] = useState("");
   const [endHour, setEndHour] = useState("");
+  // 时长筛选(纯前端): all=全部, lt60=60分钟以内, gt60=60分钟以上, custom=自定义秒区间
+  const [durPreset, setDurPreset] = useState<"all" | "lt60" | "gt60" | "custom">(
+    "all"
+  );
+  const [durMinSec, setDurMinSec] = useState("");
+  const [durMaxSec, setDurMaxSec] = useState("");
 
   // 选择
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -336,9 +342,9 @@ function MainView({
 
   function toggleAll() {
     setSelected((prev) =>
-      prev.size === videos.length
+      prev.size === filteredVideos.length && filteredVideos.length > 0
         ? new Set()
-        : new Set(videos.map((v) => v.id))
+        : new Set(filteredVideos.map((v) => v.id))
     );
   }
 
@@ -368,7 +374,7 @@ function MainView({
       dir = picked;
     }
 
-    const items = videos
+    const items = filteredVideos
       .filter((v) => selected.has(v.id))
       .map((v) => ({ id: v.id, title: v.title, url: v.cdn_url }));
 
@@ -396,6 +402,28 @@ function MainView({
     }
   }
 
+  // 按时长档位/自定义区间做纯前端筛选(duration 单位=秒)
+  const filteredVideos = useMemo(() => {
+    const inRange = (sec: number, min: number, max: number) =>
+      sec >= min && (max <= 0 || sec <= max);
+    return videos.filter((v) => {
+      const d = v.duration ?? 0;
+      switch (durPreset) {
+        case "lt60":
+          return d > 0 && d < 3600;
+        case "gt60":
+          return d >= 3600;
+        case "custom": {
+          const min = Number(durMinSec) || 0;
+          const max = Number(durMaxSec) || 0;
+          return inRange(d, min, max);
+        }
+        default:
+          return true;
+      }
+    });
+  }, [videos, durPreset, durMinSec, durMaxSec]);
+
   // 全局进度统计
   const stats = useMemo(() => {
     const vals = Object.values(rowStates);
@@ -409,7 +437,8 @@ function MainView({
     return { done, skip, err, doing, finished, totalSel, pct };
   }, [rowStates, selected]);
 
-  const allSelected = selected.size === videos.length && videos.length > 0;
+  const allSelected =
+    selected.size === filteredVideos.length && filteredVideos.length > 0;
 
   return (
     <div className="app-root">
@@ -489,6 +518,39 @@ function MainView({
               </select>
             </div>
             <div>
+              <label className="label">时长</label>
+              <select
+                className="input"
+                value={durPreset}
+                onChange={(e) => setDurPreset(e.target.value as typeof durPreset)}
+              >
+                <option value="all">全部时长</option>
+                <option value="lt60">60分钟以内</option>
+                <option value="gt60">60分钟以上</option>
+                <option value="custom">自定义(秒)</option>
+              </select>
+              {durPreset === "custom" && (
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    placeholder="最短(秒)"
+                    value={durMinSec}
+                    onChange={(e) => setDurMinSec(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    placeholder="最长(秒,空=不限)"
+                    value={durMaxSec}
+                    onChange={(e) => setDurMaxSec(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            <div>
               <label className="label">生成时间起(北京时间)</label>
               <input
                 className="input"
@@ -529,12 +591,18 @@ function MainView({
                 setSource("");
                 setStartHour("");
                 setEndHour("");
+                setDurPreset("all");
+                setDurMinSec("");
+                setDurMaxSec("");
               }}
             >
               清除筛选
             </button>
             <span className="count-hint">
-              共 {total} 个视频 · 已选 {selected.size} 个
+              共 {total} 个视频
+              {durPreset !== "all" && ` · 时长筛选后 ${filteredVideos.length} 个`}
+              {" · 已选 "}
+              {selected.size} 个
             </span>
           </div>
         </div>
@@ -546,8 +614,10 @@ function MainView({
               <Loader2 size={28} className="spin" />
               <div style={{ marginTop: 12 }}>加载中...</div>
             </div>
-          ) : videos.length === 0 ? (
-            <div className="empty">暂无匹配的视频</div>
+          ) : filteredVideos.length === 0 ? (
+            <div className="empty">
+              {videos.length === 0 ? "暂无匹配的视频" : "该时长范围内无视频"}
+            </div>
           ) : (
             <table>
               <thead>
@@ -570,7 +640,7 @@ function MainView({
                 </tr>
               </thead>
               <tbody>
-                {videos.map((v) => {
+                {filteredVideos.map((v) => {
                   const rs = rowStates[v.id];
                   return (
                     <tr
