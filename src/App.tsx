@@ -551,7 +551,7 @@ function MainView({
               )}
             </div>
             <div>
-              <label className="label">生成时间起(北京时间)</label>
+              <label className="label">完成时间起(北京时间)</label>
               <input
                 className="input"
                 type="datetime-local"
@@ -561,7 +561,7 @@ function MainView({
               />
             </div>
             <div>
-              <label className="label">生成时间止(北京时间)</label>
+              <label className="label">完成时间止(北京时间)</label>
               <input
                 className="input"
                 type="datetime-local"

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DramaVideoDownloader",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "identifier": "com.drama.video-downloader",
   "build": {
     "beforeDevCommand": "pnpm dev",

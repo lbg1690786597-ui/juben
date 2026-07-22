@@ -315,7 +315,7 @@ select {
 }
 .filters-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr 1.2fr;
   gap: 12px;
 }
 .search-box {
