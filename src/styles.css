@@ -16,6 +16,33 @@
   --amber: #f59e0b;
 }
 
+/* ===== 浅色主题（用户可切换）===== */
+[data-theme="light"] {
+  --surface: #f5f6f8;
+  --surface-elevated: #ffffff;
+  --surface-hover: #eef0f4;
+  --line: #e2e5ea;
+  --ink-primary: #1a1d23;
+  --ink-secondary: #4b515c;
+  --ink-muted: #8b93a0;
+  --primary: #6366f1;
+  --primary-hover: #4f52e0;
+  --primary-subtle: rgba(99, 102, 241, 0.12);
+}
+[data-theme="light"] body {
+  background: var(--surface);
+}
+[data-theme="light"] .login-card,
+[data-theme="light"] .filters,
+[data-theme="light"] .list-wrap,
+[data-theme="light"] .footer,
+[data-theme="light"] .topbar {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .login-error {
+  color: #b91c1c;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -239,6 +266,15 @@ select {
   font-size: 13px;
   color: var(--ink-secondary);
 }
+.version-badge {
+  padding: 3px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
 .user-chip {
   display: flex;
   align-items: center;
@@ -279,7 +315,7 @@ select {
 }
 .filters-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr 1.2fr;
   gap: 12px;
 }
 .search-box {
@@ -451,3 +487,27 @@ tbody tr.selected {
   color: var(--ink-primary);
   outline: none;
 }
+/* ===== 业务标签 chips(视频交付) ===== */
+.vd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.6;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vd-tag-used { background: rgba(22,163,74,.12); color: #16a34a; border-color: rgba(22,163,74,.35); }
+.vd-tag-published { background: rgba(37,99,235,.12); color: #2563eb; border-color: rgba(37,99,235,.35); }
+.vd-tag-editing { background: rgba(234,88,12,.12); color: #ea580c; border-color: rgba(234,88,12,.35); }
+.vd-tag-problem { background: rgba(220,38,38,.12); color: #dc2626; border-color: rgba(220,38,38,.35); }
+.vd-tag-other { background: var(--surface, #f3f4f6); color: var(--ink-secondary, #666); border-color: var(--line, #ddd); }
+.vd-tag-add {
+  background: transparent;
+  color: var(--ink-muted, #999);
+  border: 1px dashed var(--line, #ccc);
+}
+.vd-tag-add:hover { color: #16a34a; border-color: #16a34a; }
