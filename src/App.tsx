@@ -232,6 +232,12 @@ function MainView({
   );
   const [durMinSec, setDurMinSec] = useState("");
   const [durMaxSec, setDurMaxSec] = useState("");
+  // 下载状态筛选(纯前端): all|not_downloaded|downloaded_by_me|downloaded_by_others
+  const [dlStatus, setDlStatus] = useState<
+    "all" | "not_downloaded" | "downloaded_by_me" | "downloaded_by_others"
+  >("all");
+  // 标签筛选(纯前端): ''=全部, '__untagged__'=无标签, 其它=具体标签名
+  const [tagFilter, setTagFilter] = useState("");
 
   // 选择
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -428,27 +434,68 @@ function MainView({
     }
   }
 
-  // 按时长档位/自定义区间做纯前端筛选(duration 单位=秒)
+  // 综合前端筛选: 时长 + 下载状态 + 标签(delivery-list 已返回相关字段)
   const filteredVideos = useMemo(() => {
     const inRange = (sec: number, min: number, max: number) =>
       sec >= min && (max <= 0 || sec <= max);
     return videos.filter((v) => {
+      // 1) 时长
       const d = v.duration ?? 0;
+      let passDur = true;
       switch (durPreset) {
         case "lt60":
-          return d > 0 && d < 3600;
+          passDur = d > 0 && d < 3600;
+          break;
         case "gt60":
-          return d >= 3600;
+          passDur = d >= 3600;
+          break;
         case "custom": {
           const min = Number(durMinSec) || 0;
           const max = Number(durMaxSec) || 0;
-          return inRange(d, min, max);
+          passDur = inRange(d, min, max);
+          break;
         }
         default:
-          return true;
+          passDur = true;
       }
+      if (!passDur) return false;
+
+      // 2) 下载状态
+      const cnt = v.download_count || 0;
+      const mine = !!v.downloaded_by_me;
+      switch (dlStatus) {
+        case "not_downloaded":
+          if (cnt > 0) return false;
+          break;
+        case "downloaded_by_me":
+          if (!mine) return false;
+          break;
+        case "downloaded_by_others":
+          // 别人下过(全站>0)但我没下过
+          if (!(cnt > 0 && !mine)) return false;
+          break;
+        default:
+          break;
+      }
+
+      // 3) 标签
+      const tags = v.tags || [];
+      if (tagFilter === "__untagged__") {
+        if (tags.length > 0) return false;
+      } else if (tagFilter) {
+        if (!tags.includes(tagFilter)) return false;
+      }
+
+      return true;
     });
-  }, [videos, durPreset, durMinSec, durMaxSec]);
+  }, [videos, durPreset, durMinSec, durMaxSec, dlStatus, tagFilter]);
+
+  // 当前列表出现过的所有标签(供标签筛选下拉)
+  const availableTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const v of videos) for (const t of v.tags || []) s.add(t);
+    return Array.from(s);
+  }, [videos]);
 
   // 全局进度统计
   const stats = useMemo(() => {
@@ -595,6 +642,35 @@ function MainView({
                 value={endHour}
                 onChange={(e) => setEndHour(e.target.value)}
               />
+            </div>
+            <div>
+              <label className="label">下载状态</label>
+              <select
+                className="input"
+                value={dlStatus}
+                onChange={(e) => setDlStatus(e.target.value as typeof dlStatus)}
+              >
+                <option value="all">全部</option>
+                <option value="not_downloaded">未下载</option>
+                <option value="downloaded_by_me">我已下载</option>
+                <option value="downloaded_by_others">他人已下载</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">标签</label>
+              <select
+                className="input"
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+              >
+                <option value="">全部标签</option>
+                <option value="__untagged__">无标签</option>
+                {availableTags.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="filters-actions">
