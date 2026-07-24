@@ -10,6 +10,18 @@
     "dialog:default",
     "dialog:allow-open",
     "opener:default",
-    "opener:allow-open-path"
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
+    "updater:default",
+    "process:default",
+    "process:allow-restart",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://118.196.33.51/*" },
+        { "url": "http://*" },
+        { "url": "https://*" }
+      ]
+    }
   ]
 }
