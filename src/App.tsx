@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   Download,
   Search,
@@ -15,11 +18,17 @@ import {
   SkipForward,
   Tag,
   RefreshCw,
+  ArrowUpCircle,
+  Check,
+  Users,
 } from "lucide-react";
+
 import {
   login,
   fetchDeliveryList,
   logDownloads,
+  applyTags,
+  fetchTagPresets,
   beijingToUtcIso,
   DEFAULT_BASE,
   type UserInfo,
@@ -217,6 +226,12 @@ function MainView({
   const [source, setSource] = useState("");
   const [startHour, setStartHour] = useState("");
   const [endHour, setEndHour] = useState("");
+  // 时长筛选(纯前端): all=全部, lt60=60分钟以内, gt60=60分钟以上, custom=自定义秒区间
+  const [durPreset, setDurPreset] = useState<"all" | "lt60" | "gt60" | "custom">(
+    "all"
+  );
+  const [durMinSec, setDurMinSec] = useState("");
+  const [durMaxSec, setDurMaxSec] = useState("");
 
   // 选择
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -230,6 +245,48 @@ function MainView({
   const [concurrency, setConcurrency] = useState(
     () => Number(localStorage.getItem(LS.concurrency)) || 4
   );
+
+  // 更新检查
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  // 当前应用版本（动态读取，始终与安装包一致）
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+  }, []);
+
+  // 主题（浅色/暗色，持久化；默认浅色）
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (localStorage.getItem("vd_theme") as "dark" | "light") || "light"
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("vd_theme", theme);
+  }, [theme]);
+
+  async function checkForUpdate() {
+    setCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (update) {
+        const ok = window.confirm(
+          `发现新版本 v${update.version}${
+            update.body ? `\n\n更新内容:\n${update.body}` : ""
+          }\n\n是否立即下载并安装？安装完成后将重启应用。`
+        );
+        if (ok) {
+          await update.downloadAndInstall();
+          await relaunch();
+        }
+      } else {
+        alert(`当前已是最新版本 v${appVersion}`);
+      }
+    } catch (e: any) {
+      alert("检查更新失败: " + (e?.toString() || e));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
 
   // 加载清单
   const loadList = useCallback(async () => {
@@ -289,9 +346,9 @@ function MainView({
 
   function toggleAll() {
     setSelected((prev) =>
-      prev.size === videos.length
+      prev.size === filteredVideos.length && filteredVideos.length > 0
         ? new Set()
-        : new Set(videos.map((v) => v.id))
+        : new Set(filteredVideos.map((v) => v.id))
     );
   }
 
@@ -321,7 +378,7 @@ function MainView({
       dir = picked;
     }
 
-    const items = videos
+    const items = filteredVideos
       .filter((v) => selected.has(v.id))
       .map((v) => ({ id: v.id, title: v.title, url: v.cdn_url }));
 
@@ -349,6 +406,50 @@ function MainView({
     }
   }
 
+  // 给单个视频打/取消标签(全局共享), 成功后本地即时更新该行
+  async function toggleRowTag(v: VideoItem, tag: string) {
+    const has = (v.tags || []).includes(tag);
+    try {
+      await applyTags(base, token, [v.id], tag, !has);
+      setVideos((prev) =>
+        prev.map((x) =>
+          x.id === v.id
+            ? {
+                ...x,
+                tags: has
+                  ? (x.tags || []).filter((t) => t !== tag)
+                  : [...(x.tags || []), tag],
+              }
+            : x
+        )
+      );
+    } catch (e: any) {
+      alert("标签操作失败: " + (e?.message || e));
+    }
+  }
+
+  // 按时长档位/自定义区间做纯前端筛选(duration 单位=秒)
+  const filteredVideos = useMemo(() => {
+    const inRange = (sec: number, min: number, max: number) =>
+      sec >= min && (max <= 0 || sec <= max);
+    return videos.filter((v) => {
+      const d = v.duration ?? 0;
+      switch (durPreset) {
+        case "lt60":
+          return d > 0 && d < 3600;
+        case "gt60":
+          return d >= 3600;
+        case "custom": {
+          const min = Number(durMinSec) || 0;
+          const max = Number(durMaxSec) || 0;
+          return inRange(d, min, max);
+        }
+        default:
+          return true;
+      }
+    });
+  }, [videos, durPreset, durMinSec, durMaxSec]);
+
   // 全局进度统计
   const stats = useMemo(() => {
     const vals = Object.values(rowStates);
@@ -362,7 +463,8 @@ function MainView({
     return { done, skip, err, doing, finished, totalSel, pct };
   }, [rowStates, selected]);
 
-  const allSelected = selected.size === videos.length && videos.length > 0;
+  const allSelected =
+    selected.size === filteredVideos.length && filteredVideos.length > 0;
 
   return (
     <div className="app-root">
@@ -375,6 +477,29 @@ function MainView({
           <div className="topbar-title">视频交付下载器</div>
         </div>
         <div className="topbar-right">
+          <span className="version-badge" title="当前版本">
+            v{appVersion || "?"}
+          </span>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            title={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"}
+          >
+            {theme === "dark" ? "☀️ 浅色" : "🌙 暗色"}
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={checkForUpdate}
+            disabled={checkingUpdate}
+            title="检查更新"
+          >
+            {checkingUpdate ? (
+              <Loader2 size={15} className="spin" />
+            ) : (
+              <ArrowUpCircle size={15} />
+            )}
+            {checkingUpdate ? "检查中..." : "检查更新"}
+          </button>
           <div className="user-chip">
             <div className="user-avatar">
               {(user.display_name || user.username || "?")
@@ -419,7 +544,40 @@ function MainView({
               </select>
             </div>
             <div>
-              <label className="label">生成时间起(北京时间)</label>
+              <label className="label">时长</label>
+              <select
+                className="input"
+                value={durPreset}
+                onChange={(e) => setDurPreset(e.target.value as typeof durPreset)}
+              >
+                <option value="all">全部时长</option>
+                <option value="lt60">60分钟以内</option>
+                <option value="gt60">60分钟以上</option>
+                <option value="custom">自定义(秒)</option>
+              </select>
+              {durPreset === "custom" && (
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    placeholder="最短(秒)"
+                    value={durMinSec}
+                    onChange={(e) => setDurMinSec(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    placeholder="最长(秒,空=不限)"
+                    value={durMaxSec}
+                    onChange={(e) => setDurMaxSec(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="label">完成时间起(北京时间)</label>
               <input
                 className="input"
                 type="datetime-local"
@@ -429,7 +587,7 @@ function MainView({
               />
             </div>
             <div>
-              <label className="label">生成时间止(北京时间)</label>
+              <label className="label">完成时间止(北京时间)</label>
               <input
                 className="input"
                 type="datetime-local"
@@ -459,12 +617,18 @@ function MainView({
                 setSource("");
                 setStartHour("");
                 setEndHour("");
+                setDurPreset("all");
+                setDurMinSec("");
+                setDurMaxSec("");
               }}
             >
               清除筛选
             </button>
             <span className="count-hint">
-              共 {total} 个视频 · 已选 {selected.size} 个
+              共 {total} 个视频
+              {durPreset !== "all" && ` · 时长筛选后 ${filteredVideos.length} 个`}
+              {" · 已选 "}
+              {selected.size} 个
             </span>
           </div>
         </div>
@@ -476,8 +640,10 @@ function MainView({
               <Loader2 size={28} className="spin" />
               <div style={{ marginTop: 12 }}>加载中...</div>
             </div>
-          ) : videos.length === 0 ? (
-            <div className="empty">暂无匹配的视频</div>
+          ) : filteredVideos.length === 0 ? (
+            <div className="empty">
+              {videos.length === 0 ? "暂无匹配的视频" : "该时长范围内无视频"}
+            </div>
           ) : (
             <table>
               <thead>
@@ -491,13 +657,17 @@ function MainView({
                     />
                   </th>
                   <th style={{ width: 60 }}>ID</th>
-                  <th>标题</th>
+                  <th>标题 / 原名</th>
                   <th style={{ width: 110 }}>来源</th>
-                  <th style={{ width: 170 }}>状态 / 进度</th>
+                  <th style={{ width: 150 }}>标签</th>
+                  <th style={{ width: 130 }}>下载情况</th>
+                  <th style={{ width: 120 }}>完成时间</th>
+                  <th style={{ width: 70 }}>时长</th>
+                  <th style={{ width: 150 }}>状态 / 进度</th>
                 </tr>
               </thead>
               <tbody>
-                {videos.map((v) => {
+                {filteredVideos.map((v) => {
                   const rs = rowStates[v.id];
                   return (
                     <tr
@@ -517,6 +687,20 @@ function MainView({
                         <div className="col-title" title={v.title}>
                           {v.title}
                         </div>
+                        {v.original_title &&
+                          v.original_title !== v.title && (
+                            <div
+                              className="col-subtitle"
+                              title={`原小说名: ${v.original_title}`}
+                              style={{
+                                fontSize: 12,
+                                color: "var(--ink-muted)",
+                                marginTop: 2,
+                              }}
+                            >
+                              原名: {v.original_title}
+                            </div>
+                          )}
                       </td>
                       <td>
                         <span
@@ -527,6 +711,57 @@ function MainView({
                           <Tag size={11} />
                           {v.source === "feishu" ? "飞书" : "小说转视频"}
                         </span>
+                      </td>
+                      {/* 业务标签 chips + 快捷"已使用" */}
+                      <td>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                          {(v.tags || []).map((t) => (
+                            <button
+                              key={t}
+                              className={`vd-tag vd-tag-${tagKind(t)}`}
+                              title="点击取消"
+                              onClick={() => toggleRowTag(v, t)}
+                            >
+                              {t} ✕
+                            </button>
+                          ))}
+                          {!(v.tags || []).includes("已使用") && (
+                            <button
+                              className="vd-tag vd-tag-add"
+                              onClick={() => toggleRowTag(v, "已使用")}
+                            >
+                              + 已使用
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      {/* 下载情况: 我下过 + 全站 */}
+                      <td style={{ fontSize: 12 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {v.downloaded_by_me ? (
+                            <span style={{ color: "#16a34a", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <Check size={12} />我下过{v.my_download_count || 0}次
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--ink-muted)" }}>未下载</span>
+                          )}
+                          <span
+                            style={{ color: "var(--ink-muted)", display: "inline-flex", alignItems: "center", gap: 3, cursor: (v.downloaders || []).length ? "help" : "default" }}
+                            title={
+                              (v.downloaders || []).length
+                                ? "下载记录:\n" + (v.downloaders || []).map((d) => `${d.name}${d.is_me ? "(我)" : ""}: ${d.count}次`).join("\n")
+                                : ""
+                            }
+                          >
+                            <Users size={12} />全站{v.download_count}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                        {fmtBeijing(v.updated_at)}
+                      </td>
+                      <td style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                        {fmtDuration(v.duration)}
                       </td>
                       <td>
                         <RowStatusCell state={rs} />
@@ -620,6 +855,42 @@ function MainView({
       </div>
     </div>
   );
+}
+
+// UTC ISO → 北京时间显示（yyyy-MM-dd HH:mm）
+function fmtBeijing(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  const bj = new Date(d.getTime() + 8 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(
+    bj.getUTCDate()
+  )} ${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}`;
+}
+
+// 秒 → mm:ss
+function fmtDuration(sec?: number): string {
+  if (!sec || sec <= 0) return "—";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// 标签 → 样式种类(用于 vd-tag-xxx 类名; 决定颜色)
+function tagKind(tag: string): string {
+  switch (tag) {
+    case "已使用":
+      return "used";
+    case "已发布":
+      return "published";
+    case "待剪辑":
+      return "editing";
+    case "有问题":
+      return "problem";
+    default:
+      return "other";
+  }
 }
 
 function RowStatusCell({ state }: { state?: RowState }) {
