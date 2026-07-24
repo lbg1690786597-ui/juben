@@ -1,4 +1,6 @@
 // ===== 后端 API 封装（复用平台 orchestrator 接口）=====
+// 使用 Tauri HTTP 插件的 fetch（从 Rust 侧发请求，绕过 WebView 的明文 HTTP / mixed-content 限制）
+import { fetch } from "@tauri-apps/plugin-http";
 
 export interface UserInfo {
   id: number;
@@ -13,13 +15,30 @@ export interface LoginResult {
   refresh_token: string;
 }
 
+export interface Downloader {
+  user_id: number;
+  name: string;
+  count: number;
+  last_at: string | null;
+  is_me: boolean;
+}
+
 export interface VideoItem {
   id: number;
   title: string;
+  original_title?: string | null; // 原小说名
   cdn_url: string;
+  thumbnail_url?: string | null;   // 封面缩略图
   source: string;
   created_at: string | null;
-  download_count: number;
+  updated_at?: string | null; // 实际生成完成时间
+  feishu_record_id?: string | null; // 飞书来源行
+  duration?: number; // 时长(秒)
+  download_count: number;          // 全站累计
+  my_download_count?: number;      // 我下过几次
+  downloaded_by_me?: boolean;      // 是否我下过
+  downloaders?: Downloader[];      // 谁下过
+  tags?: string[];                 // 业务标签(已使用等)
 }
 
 export interface DeliveryListResult {
@@ -28,7 +47,7 @@ export interface DeliveryListResult {
 }
 
 // 默认服务器地址（可在登录页修改并记忆）
-export const DEFAULT_BASE = "http://120.26.143.129";
+export const DEFAULT_BASE = "http://118.196.33.51";
 
 function trimBase(base: string): string {
   return base.replace(/\/+$/, "");
@@ -101,7 +120,7 @@ export async function fetchDeliveryList(
   return res.json();
 }
 
-/** 批量记录下载统计（写入平台同一张 video_download_logs 表） */
+/** 批量记录下载统计（写入平台同一张 video_download_logs 表, channel=desktop） */
 export async function logDownloads(
   base: string,
   token: string,
@@ -114,12 +133,45 @@ export async function logDownloads(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ job_ids }),
+    body: JSON.stringify({ job_ids, channel: "desktop" }),
   });
   // 统计失败不阻塞下载，仅忽略
   if (!res.ok) {
     console.warn("下载统计上报失败", res.status);
   }
+}
+
+/** 批量打/取消业务标签(全局共享, 幂等)。add=true 打标, false 取消。 */
+export async function applyTags(
+  base: string,
+  token: string,
+  job_ids: number[],
+  tag: string,
+  add: boolean
+): Promise<void> {
+  if (job_ids.length === 0 || !tag) return;
+  const res = await fetch(`${trimBase(base)}/v1/video-delivery/tags`, {
+    method: add ? "POST" : "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ job_ids, tag }),
+  });
+  if (!res.ok) throw new Error(`标签操作失败(${res.status})`);
+}
+
+/** 拉取标签下拉列表(预置 + 已用过的自定义) */
+export async function fetchTagPresets(
+  base: string,
+  token: string
+): Promise<string[]> {
+  const res = await fetch(`${trimBase(base)}/v1/video-delivery/tags/presets`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return ["已使用", "已发布", "待剪辑", "有问题"];
+  const j = await res.json();
+  return j.tags || [];
 }
 
 /** 北京时间(datetime-local 值,如 2026-07-14T21:00) → UTC ISO */
